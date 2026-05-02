@@ -36,7 +36,11 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "unit-converter@moshib.in",
-      "strict_min_version": "57.0"
+      "strict_min_version": "79.0",
+      "data_collection_permissions": {
+        "required": [],
+        "optional": []
+      }
     }
   }
 }

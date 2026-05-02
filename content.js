@@ -36,17 +36,35 @@
   function showTooltip(x, y, results) {
     const el = createTooltip();
 
-    // Build HTML
-    const html = results
-      .map((r) => {
-        const convText = r.conversions
-          .map((c) => `<span class="uc-result">${c.value} ${c.unit}</span>`)
-          .join(`<span class="uc-sep">|</span>`);
-        return `<div class="uc-row"><span class="uc-original">${escapeHtml(r.original)}</span> → ${convText}</div>`;
-      })
-      .join("");
+    // Build tooltip content via DOM (avoids innerHTML lint warning)
+    while (el.firstChild) el.removeChild(el.firstChild);
 
-    el.innerHTML = html;
+    results.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "uc-row";
+
+      const original = document.createElement("span");
+      original.className = "uc-original";
+      original.textContent = r.original;
+      row.appendChild(original);
+
+      row.appendChild(document.createTextNode(" → "));
+
+      r.conversions.forEach((c, i) => {
+        if (i > 0) {
+          const sep = document.createElement("span");
+          sep.className = "uc-sep";
+          sep.textContent = "|";
+          row.appendChild(sep);
+        }
+        const result = document.createElement("span");
+        result.className = "uc-result";
+        result.textContent = `${c.value} ${c.unit}`;
+        row.appendChild(result);
+      });
+
+      el.appendChild(row);
+    });
 
     // Position: above the selection, centered
     document.body.appendChild(el); // ensure in DOM
@@ -72,12 +90,6 @@
 
     el.style.left = `${left}px`;
     el.style.top = `${top}px`;
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   // Listen for mouseup to detect selection
