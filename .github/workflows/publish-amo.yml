@@ -60,10 +60,11 @@ jobs:
             --api-secret="${{ secrets.AMO_JWT_SECRET }}" \
             --channel=listed \
             --amo-metadata=/tmp/amo-metadata.json \
+            --approval-timeout=0 \
             --no-config-discovery
-        # For listed extensions AMO still requires human review before
-        # the new version goes live — this step submits it into the queue.
-        # Change --channel=listed to --channel=unlisted for auto-approval.
+        # --approval-timeout=0 means: submit and exit immediately without
+        # waiting for Mozilla's human review. The version will appear in
+        # the review queue at addons.mozilla.org/developers.
 
       - name: Upload zip to GitHub Release
         uses: softprops/action-gh-release@v2
