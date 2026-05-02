@@ -32,5 +32,11 @@
   ],
   "background": {
     "scripts": ["background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "unit-converter@moshib.in",
+      "strict_min_version": "57.0"
+    }
   }
 }
