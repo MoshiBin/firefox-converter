@@ -1,0 +1,37 @@
+name: Sign (unlisted) for local install
+
+# Signs the current state of the repo as an unlisted extension.
+# Mozilla auto-signs unlisted builds immediately — no review queue.
+# Download the signed .xpi from the workflow artifacts once it completes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install web-ext
+        run: npm install -g web-ext
+
+      - name: Sign as unlisted
+        run: |
+          web-ext sign \
+            --api-key="${{ secrets.AMO_JWT_ISSUER }}" \
+            --api-secret="${{ secrets.AMO_JWT_SECRET }}" \
+            --channel=unlisted \
+            --no-config-discovery
+
+      - name: Upload signed XPI as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-xpi
+          path: web-ext-artifacts/*.xpi
+          retention-days: 7
