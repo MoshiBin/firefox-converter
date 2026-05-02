@@ -54,7 +54,7 @@ jobs:
 
       - name: Submit to AMO
         run: |
-          echo '{"version":{"license":"MIT"},"categories":{"firefox":["general"],"android":["general"]}}' > /tmp/amo-metadata.json
+          echo '{"version":{"license":"MIT"},"categories":{"firefox":["other"],"android":["other"]}}' > /tmp/amo-metadata.json
           web-ext sign \
             --api-key="${{ secrets.AMO_JWT_ISSUER }}" \
             --api-secret="${{ secrets.AMO_JWT_SECRET }}" \
