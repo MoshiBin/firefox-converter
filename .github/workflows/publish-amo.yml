@@ -58,6 +58,7 @@ jobs:
             --api-key="${{ secrets.AMO_JWT_ISSUER }}" \
             --api-secret="${{ secrets.AMO_JWT_SECRET }}" \
             --channel=listed \
+            --amo-metadata=amo-metadata.json \
             --no-config-discovery
         # For listed extensions AMO still requires human review before
         # the new version goes live — this step submits it into the queue.
