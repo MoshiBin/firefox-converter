@@ -1,0 +1,48 @@
+name: Publish to AMO
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to upload release assets
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install web-ext
+        run: npm install -g web-ext
+
+      - name: Sync version from release tag
+        run: |
+          # Strip leading 'v' from tag name (v1.2.3 -> 1.2.3)
+          VERSION="${GITHUB_REF_NAME#v}"
+          jq --arg v "$VERSION" '.version = $v' manifest.json > manifest.tmp.json
+          mv manifest.tmp.json manifest.json
+          echo "Version set to $VERSION"
+
+      - name: Build extension
+        run: web-ext build
+
+      - name: Submit to AMO
+        run: |
+          web-ext sign \
+            --api-key="${{ secrets.AMO_JWT_ISSUER }}" \
+            --api-secret="${{ secrets.AMO_JWT_SECRET }}" \
+            --channel=listed \
+            --no-config-discovery
+        # For listed extensions, AMO still requires human review before
+        # the new version goes live — this step submits it into the queue.
+        # Change --channel=listed to --channel=unlisted for auto-approval.
+
+      - name: Upload zip to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: web-ext-artifacts/*.zip
