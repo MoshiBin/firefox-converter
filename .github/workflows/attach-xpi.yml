@@ -1,0 +1,96 @@
+name: Attach signed XPI to release
+
+# Run this manually once AMO has approved the version under review.
+# The AMO version ID is printed in the publish-amo job summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "GitHub release tag (e.g. v1.0.1)"
+        required: true
+        type: string
+      amo_version_id:
+        description: "AMO numeric version ID (shown in publish-amo job summary)"
+        required: true
+        type: string
+
+jobs:
+  attach-xpi:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signed XPI from AMO
+        id: download
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          AMO_VERSION_ID: ${{ github.event.inputs.amo_version_id }}
+          TAG_NAME: ${{ github.event.inputs.tag_name }}
+        run: |
+          python3 << 'PYEOF'
+          import hmac, hashlib, base64, json, time, uuid, urllib.request, urllib.error, os, sys
+
+          issuer  = os.environ["AMO_JWT_ISSUER"]
+          secret  = os.environ["AMO_JWT_SECRET"].encode()
+          ver_id  = os.environ["AMO_VERSION_ID"]
+          tag     = os.environ["TAG_NAME"]
+
+          def b64url(data):
+              if isinstance(data, str): data = data.encode()
+              return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+          def make_token():
+              now = int(time.time())
+              hdr = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}))
+              pld = b64url(json.dumps({"iss": issuer, "jti": str(uuid.uuid4()),
+                                       "iat": now, "exp": now + 300}))
+              sig = b64url(hmac.new(secret, f"{hdr}.{pld}".encode(), hashlib.sha256).digest())
+              return f"{hdr}.{pld}.{sig}"
+
+          token = make_token()
+          headers = {"Authorization": f"JWT {token}"}
+
+          # Fetch version metadata
+          req = urllib.request.Request(
+              f"https://addons.mozilla.org/api/v5/addons/addon/unit-converter4/versions/{ver_id}/",
+              headers=headers
+          )
+          try:
+              with urllib.request.urlopen(req) as r:
+                  data = json.load(r)
+          except urllib.error.HTTPError as e:
+              print(f"AMO API error {e.code}: {e.read().decode()}")
+              sys.exit(1)
+
+          file_info = data.get("file", {})
+          status    = file_info.get("status", "unknown")
+          xpi_url   = file_info.get("url", "")
+
+          print(f"AMO version status: {status}")
+
+          if status != "public":
+              print(f"XPI is not yet approved (status: '{status}').")
+              print("Wait for Mozilla review to complete, then re-run this workflow.")
+              sys.exit(1)
+
+          # Download the XPI (auth required)
+          xpi_name = f"unit_converter-{tag}.xpi"
+          print(f"Downloading {xpi_url} ...")
+          req2 = urllib.request.Request(xpi_url, headers=headers)
+          with urllib.request.urlopen(req2) as r, open(xpi_name, "wb") as f:
+              f.write(r.read())
+          print(f"Saved as {xpi_name}")
+          PYEOF
+
+      - name: Upload XPI to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.event.inputs.tag_name }} \
+            unit_converter-${{ github.event.inputs.tag_name }}.xpi \
+            --repo ${{ github.repository }} \
+            --clobber
+          echo "XPI attached to release ${{ github.event.inputs.tag_name }}"

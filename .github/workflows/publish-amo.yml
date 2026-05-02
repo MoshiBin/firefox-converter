@@ -71,3 +71,59 @@ jobs:
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: web-ext-artifacts/*.zip
+
+      - name: Print AMO version ID for XPI attachment
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          python3 << 'PYEOF'
+          import hmac, hashlib, base64, json, time, uuid, urllib.request, urllib.error, os
+
+          issuer = os.environ["AMO_JWT_ISSUER"]
+          secret = os.environ["AMO_JWT_SECRET"].encode()
+          tag    = os.environ["TAG"].lstrip("v")
+
+          def b64url(data):
+              if isinstance(data, str): data = data.encode()
+              return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+          now = int(time.time())
+          hdr = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}))
+          pld = b64url(json.dumps({"iss": issuer, "jti": str(uuid.uuid4()),
+                                   "iat": now, "exp": now + 300}))
+          sig = b64url(hmac.new(secret, f"{hdr}.{pld}".encode(), hashlib.sha256).digest())
+          token = f"{hdr}.{pld}.{sig}"
+
+          req = urllib.request.Request(
+              "https://addons.mozilla.org/api/v5/addons/addon/unit-converter4/versions/"
+              f"?filter=all_with_unlisted&ordering=-created&page_size=5",
+              headers={"Authorization": f"JWT {token}"}
+          )
+          try:
+              with urllib.request.urlopen(req) as r:
+                  data = json.load(r)
+          except urllib.error.HTTPError as e:
+              print(f"Could not fetch versions: {e.code}")
+              raise
+
+          match = next((v for v in data["results"] if v["version"] == tag), None)
+          if not match:
+              print(f"No AMO version found matching {tag}. Results:")
+              for v in data["results"]:
+                  print(f"  {v['id']} — {v['version']}")
+          else:
+              vid = match["id"]
+              summary = (
+                  f"## AMO Submission\n\n"
+                  f"Version **{tag}** submitted for review.\n\n"
+                  f"**AMO version ID:** `{vid}`\n\n"
+                  f"Once approved, attach the signed XPI to the release by running:\n\n"
+                  f"```\ngh workflow run attach-xpi.yml "
+                  f"--field tag_name=v{tag} --field amo_version_id={vid}\n```"
+              )
+              print(summary)
+              with open(os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout"), "a") as f:
+                  f.write(summary)
+          PYEOF
