@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Unit Converter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Select text containing measurements and instantly see conversions in a tooltip.",
   "permissions": [
     "storage",
@@ -25,20 +25,31 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["converter.js", "content.js"],
-      "css": ["tooltip.css"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "converter.js",
+        "content.js"
+      ],
+      "css": [
+        "tooltip.css"
+      ]
     }
   ],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": [
+      "background.js"
+    ]
   },
   "browser_specific_settings": {
     "gecko": {
       "id": "unit-converter@moshib.in",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": ["none"],
+        "required": [
+          "none"
+        ],
         "optional": []
       }
     }
