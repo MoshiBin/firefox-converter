@@ -29,12 +29,16 @@ jobs:
             exit 1
           fi
 
-      - name: Bump version in manifest.json
+      - name: Bump version in manifest.json and package.json
         run: |
           VERSION="${{ github.event.inputs.version }}"
           jq --arg v "$VERSION" '.version = $v' manifest.json > manifest.tmp.json
           mv manifest.tmp.json manifest.json
-          echo "Bumped manifest.json to $VERSION"
+          if [ -f package.json ]; then
+            jq --arg v "$VERSION" '.version = $v' package.json > package.tmp.json
+            mv package.tmp.json package.json
+          fi
+          echo "Set version to $VERSION"
 
       - name: Commit, tag, and release
         id: tag
@@ -43,9 +47,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add manifest.json
-          git commit -m "Release ${TAG}"
+          [ -f package.json ] && git add package.json
+          # The version may already be bumped (e.g. in the feature PR), in which
+          # case there is nothing to commit — skip the commit but still tag.
+          if git diff --cached --quiet; then
+            echo "Version already at ${TAG#v}; tagging current commit."
+          else
+            git commit -m "Release ${TAG}"
+            git push origin main
+          fi
           git tag "${TAG}"
-          git push origin main
           git push origin "${TAG}"
           echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
 
