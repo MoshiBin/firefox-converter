@@ -1,3 +1,10 @@
 web-ext-artifacts/
 *.xpi
 *.zip
+
+# npm
+node_modules/
+
+# web-ext sign artifacts
+.amo-upload-uuid
+.web-extension-id
