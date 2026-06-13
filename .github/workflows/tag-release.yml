@@ -45,7 +45,7 @@ jobs:
           git add manifest.json
           git commit -m "Release ${TAG}"
           git tag "${TAG}"
-          git push origin master
+          git push origin main
           git push origin "${TAG}"
           echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
 
