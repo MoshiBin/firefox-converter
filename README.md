@@ -16,7 +16,7 @@ Just select text and the tooltip appears above the selection automatically.
 
 ## Installation
 
-Install from the [Firefox Add-ons store](https://addons.mozilla.org/en-US/developers/addon/unit-converter4/).
+Install from the [Firefox Add-ons store](https://addons.mozilla.org/en-US/firefox/addon/unit-converter4/).
 
 Or load it manually for development — see [Development](#development) below.
 
