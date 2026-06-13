@@ -31,7 +31,7 @@ jobs:
       released: ${{ steps.plan.outputs.released }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # full tag list for the increment guard + push-back
 
@@ -120,7 +120,7 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.plan.outputs.released == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.plan.outputs.tag_name }}
           name: ${{ steps.plan.outputs.tag_name }}
