@@ -1,0 +1,9 @@
+{
+  "name": "firefox-converter",
+  "version": "1.0.2",
+  "description": "In-line unit and currency conversion tooltip for Firefox.",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
