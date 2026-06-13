@@ -8,3 +8,7 @@ node_modules/
 # web-ext sign artifacts
 .amo-upload-uuid
 .web-extension-id
+
+# Python
+__pycache__/
+*.pyc
