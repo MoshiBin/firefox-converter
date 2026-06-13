@@ -1,0 +1,141 @@
+name: Release
+
+# Two ways to cut a release; both end in a tag, a GitHub Release whose body is
+# the CHANGELOG.md "[Unreleased]" + "[version]" sections, and an AMO submission.
+#
+#   1. Automatic — push to main with a new version in manifest.json. Bump the
+#      version (your semver call) in the PR and merging ships it.
+#
+#   2. Manual — Actions → Release → Run workflow, enter the version. This works
+#      off whatever is currently on main: it bumps manifest.json/package.json to
+#      that version, folds [Unreleased] into a dated "[version]" changelog
+#      section, commits, tags, and releases.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release current main as this version (e.g. 1.2.3)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.plan.outputs.tag_name }}
+      released: ${{ steps.plan.outputs.released }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full tag list for the increment guard + push-back
+
+      - name: Decide version and whether to release
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          # On manual dispatch the version is given; on push it comes from manifest.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"; STRICT=1
+          else
+            VERSION="$(jq -r '.version' manifest.json)"; STRICT=0
+            # Don't re-trigger on the release commit that the manual path pushes.
+            case "$HEAD_MSG" in
+              "Release v"*) echo "Skipping release commit."; echo "released=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+          fi
+          echo "Version: $VERSION (event: $EVENT)"
+
+          fail() { if [ "$STRICT" = "1" ]; then echo "::error::$1"; exit 1; \
+                   else echo "::notice::$1"; echo "released=false" >> "$GITHUB_OUTPUT"; exit 0; fi; }
+
+          echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "Version '$VERSION' is not X.Y.Z."
+
+          TAG="v$VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            fail "Tag $TAG already exists."
+          fi
+
+          LATEST="$(git tag -l 'v*' | sed 's/^v//' | sort -V | tail -n1)"
+          if [ -n "$LATEST" ]; then
+            HIGHEST="$(printf '%s\n%s\n' "$LATEST" "$VERSION" | sort -V | tail -n1)"
+            if [ "$VERSION" = "$LATEST" ] || [ "$HIGHEST" != "$VERSION" ]; then
+              fail "Version $VERSION is not greater than latest release $LATEST."
+            fi
+          fi
+
+          echo "tag_name=$TAG"   >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "released=true"   >> "$GITHUB_OUTPUT"
+
+      - name: Bump version, stamp changelog, and push (manual dispatch only)
+        if: steps.plan.outputs.released == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          TAG: ${{ steps.plan.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          jq --arg v "$VERSION" '.version = $v' manifest.json > manifest.tmp && mv manifest.tmp manifest.json
+          if [ -f package.json ]; then
+            jq --arg v "$VERSION" '.version = $v' package.json > package.tmp && mv package.tmp package.json
+          fi
+          python3 .github/scripts/changelog.py stamp "$VERSION" "$(date -u +%Y-%m-%d)" "$REPO"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing to commit; tagging current main."
+          else
+            git commit -m "Release $TAG"
+          fi
+          # Push the tag first so the resulting push event sees it already exists
+          # and the automatic path no-ops instead of double-releasing.
+          git tag "$TAG"
+          git push origin "$TAG"
+          git push origin HEAD:main
+
+      - name: Build release notes from CHANGELOG.md
+        if: steps.plan.outputs.released == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/changelog.py notes "$VERSION" > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "Release $VERSION. See [CHANGELOG.md](CHANGELOG.md) for details." > release-notes.md
+          fi
+          echo "----- release notes -----"; cat release-notes.md
+
+      - name: Create GitHub Release
+        if: steps.plan.outputs.released == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.plan.outputs.tag_name }}
+          name: ${{ steps.plan.outputs.tag_name }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+
+  # Releases created with the default GITHUB_TOKEN don't fire the
+  # `release: published` event, so we invoke the publish workflow directly.
+  publish:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    uses: ./.github/workflows/publish-amo.yml
+    with:
+      tag_name: ${{ needs.release.outputs.tag_name }}
+    secrets:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
