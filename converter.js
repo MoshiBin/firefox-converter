@@ -241,11 +241,41 @@ const UnitConverter = (() => {
   ];
 
   // --- Number parsing ---
+  // Reusable numeric token pattern. Matches (in priority order):
+  //   - a simple fraction:        3/16
+  //   - integer/decimal,          8   3.5   1,234.56   1.234,56
+  //     optionally followed by a fraction to form a mixed number:
+  //                               1 1/2   1-1/2   2-3/8
+  const NUM = String.raw`\d+\s*\/\s*\d+|\d[\d,.]*(?:[\s-]\d+\s*\/\s*\d+)?`;
+
   function parseNumber(str) {
+    let s = str.trim();
+    if (s.length === 0) return null;
+
+    // Optional leading sign
+    let sign = 1;
+    if (s[0] === "-") { sign = -1; s = s.slice(1).trim(); }
+    else if (s[0] === "+") { s = s.slice(1).trim(); }
+
+    // Mixed number: "1 1/2", "1-1/2"  (whole part + fraction)
+    let m = s.match(/^(\d[\d,.]*)[\s-]+(\d+)\s*\/\s*(\d+)$/);
+    if (m) {
+      const whole = parseNumber(m[1]);
+      const den = parseInt(m[3], 10);
+      if (whole === null || den === 0) return null;
+      return sign * (whole + parseInt(m[2], 10) / den);
+    }
+
+    // Simple fraction: "3/16"
+    m = s.match(/^(\d+)\s*\/\s*(\d+)$/);
+    if (m) {
+      const den = parseInt(m[2], 10);
+      if (den === 0) return null;
+      return sign * (parseInt(m[1], 10) / den);
+    }
+
     // Handle comma as thousands separator: "1,234.56" or "1,234"
     // Handle period as thousands separator: "1.234,56" (European)
-    let s = str.trim();
-
     // European style: 1.234,56
     if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
       s = s.replace(/\./g, "").replace(",", ".");
@@ -256,7 +286,7 @@ const UnitConverter = (() => {
     }
 
     const n = parseFloat(s);
-    return isNaN(n) ? null : n;
+    return isNaN(n) ? null : sign * n;
   }
 
   // --- Formatting ---
@@ -301,8 +331,8 @@ const UnitConverter = (() => {
     }
 
     // 2. Distance with quote/double-quote: 5'10", 12", 6'
-    //    Feet-inches combo: 5'10" or 5' 10"
-    const feetInchRegex = /(\d[\d,.]*)\s*['′]\s*(\d[\d,.]*)\s*["″]?/g;
+    //    Feet-inches combo: 5'10" or 5' 10" (inches may be fractional: 5'10 1/2")
+    const feetInchRegex = new RegExp(`(\\d[\\d,.]*)\\s*['′]\\s*((?:${NUM}))\\s*["″]?`, "g");
     while ((match = feetInchRegex.exec(t)) !== null) {
       const feet = parseNumber(match[1]);
       const inches = parseNumber(match[2]);
@@ -318,8 +348,8 @@ const UnitConverter = (() => {
       });
     }
 
-    // Standalone inches with double quote: 12"
-    const inchQuoteRegex = /(\d[\d,.]*)\s*["″]/g;
+    // Standalone inches with double quote: 12", 3/16"
+    const inchQuoteRegex = new RegExp(`((?:${NUM}))\\s*["″]`, "g");
     while ((match = inchQuoteRegex.exec(t)) !== null) {
       // Skip if already matched as feet-inches combo
       const alreadyCovered = results.some(r => {
@@ -371,8 +401,12 @@ const UnitConverter = (() => {
       "mi", "mile", "miles",
     ];
     const unitPattern = unitWords.join("|");
+    // Number and unit may be joined by spaces or a hyphen: "5 kg", "8-ft",
+    // "3/16-in". The leading (?<!\d) stops a hyphen in a range like "5-10 ft"
+    // from being read as a minus sign; the trailing (?!-\d) avoids compounds
+    // like "3-in-1".
     const measureRegex = new RegExp(
-      `(-?\\d[\\d,.]*)\\s*(${unitPattern})(?:\\b|$)`, "gi"
+      `(?<!\\d)(-?(?:${NUM}))[\\s-]*(${unitPattern})(?:\\b|$)(?!-\\d)`, "gi"
     );
     while ((match = measureRegex.exec(t)) !== null) {
       const num = parseNumber(match[1]);
@@ -466,3 +500,9 @@ const UnitConverter = (() => {
 
   return { parse, CURRENCY_CODES };
 })();
+
+// Allow use as a CommonJS module under Node (e.g. for unit tests).
+// Harmless in the browser, where `module` is undefined.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = UnitConverter;
+}
